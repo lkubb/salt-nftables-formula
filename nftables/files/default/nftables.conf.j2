@@ -1,0 +1,387 @@
+{#- Macros in here to avoid salt-ssh issues (for now @FIXME) #}
+{%- macro render_val(val, toset=false) %}
+{%-   if val is list %}
+{%-     if toset %}{ {{ val | join(", ") }} }
+{%-     else %}{{ val | join(", ") }}
+{%-     endif %}
+{%-   else %}{{ val }}
+{%-   endif %}
+{%- endmacro %}
+
+{%- macro render_define(k, v) -%}
+define {{ k }} = {{ render_val(v, toset=true) }}
+{%- endmacro %}
+
+{%- macro render_set(k, v) -%}
+set {{ k }} {
+
+{%-   if v.get("typeof") %}
+  typeof {{ v.typeof }}
+{%-   else %}
+  type {{ v.type }}
+{%-   endif %}
+
+{%-   if v.get("size") is not none %}
+  size {{ v.size }}
+{%-   endif %}
+
+{%-   if v.get("policy") %}
+  policy {{ v.policy }}
+{%-   endif %}
+
+{%-   if v.get("timeout") is not none %}
+  timeout {{ v.timeout }}
+{%-   endif %}
+
+{%-   if v.get("flags") %}
+  flags {{ render_val(v.flags) }}
+{%-   endif %}
+
+{%-   if v.get("timeout") is not none or "timeout" in v.get("flags", []) %}
+{%-     if v.get("gc_interval") is not none %}
+  gc-interval {{ v.gc_interval }}
+{%-     endif %}
+{%-   endif %}
+
+{%-   if v.get("auto_merge") %}
+  auto-merge
+{%-   endif %}
+
+{%-   if v.get("counter") %}
+  counter
+{%-   endif %}
+{%-   if v.get("elements") %}
+  elements = {
+{%-     for elem in v.get("elements", []) %}
+{#-  This can either contain the element's value only or
+     the value + options for counter/timeout `counter packets 0 bytes 0`
+#}
+    {{ elem }},
+{%-     endfor %}
+  }
+{%-   endif %}
+}
+{% endmacro %}
+
+{%- macro render_map(k, v) -%}
+map {{ k }} {
+  type {{ v.type_key }} : {{ v.type_value }}
+
+{%-   if v.get("size") is not none %}
+  size {{ v.size }}
+{%-   endif %}
+
+{%-   if v.get("policy") %}
+  policy {{ v.policy }}
+{%-   endif %}
+
+{%-   if v.get("timeout") is not none %}
+  timeout {{ v.timeout }}
+{%-   endif %}
+
+{%-   if v.get("flags") %}
+  flags {{ render_val(v.flags) }}
+{%-   endif %}
+
+{%-   if v.get("timeout") is not none or "timeout" in v.get("flags", []) %}
+{%-     if v.get("gc_interval") is not none %}
+  gc-interval {{ v.gc_interval }}
+{%-     endif %}
+{%-   endif %}
+
+{%-   if v.get("auto_merge") %}
+  auto-merge
+{%-   endif %}
+
+{%-   if v.get("counter") %}
+  counter
+{%-   endif %}
+{%-   if v.get("elements") %}
+  elements = {
+{%-     for key, val in v.get("elements", []) | dictsort %}
+{#-  `val` can either contain the element's value only or
+     the value + options for counter/timeout `counter packets 0 bytes 0`
+#}
+    {{ key }} : {{ val }}
+{%-     endfor %}
+  }
+{%-   endif %}
+}
+{% endmacro %}
+
+{%- macro render_counter(k, v) -%}
+counter {{ k }} {
+
+{%-   if v.get("packets") is not none or v.get("bytes") is not none %}
+  packets {{ v.get("packets", 0) }} bytes {{ v.get("bytes", 0) }}
+{%-   endif %}
+
+{%-   if v.get("comment") %}
+  comment {{ v.comment | string | json }}
+{%-   endif %}
+}
+{% endmacro %}
+
+{%- macro render_limit(k, v) -%}
+limit {{ k }} {
+  rate {{ v.rate }}
+  {%- if v.get("burst") is not none %} burst {{ v.burst }}{%- endif %}
+
+{%-   if v.get("comment") %}
+  comment {{ v.comment | string | json }}
+{%-   endif %}
+}
+{% endmacro %}
+
+{%- macro render_quota(k, v) -%}
+quota {{ k }} {
+  {{ "until" if v.get("inv") else "over" }} {{ v.count }}
+  {%-   if v.get("used") is not none %} used {{ v.used }}{%-   endif %}
+
+{%-   if v.get("comment") %}
+  comment {{ v.comment | string | json }}
+{%-   endif %}
+}
+{% endmacro %}
+
+{%- macro render_ct_helper(k, v) -%}
+ct helper {{ k }} {
+    type "{{ v.type }}"
+    {%- if v.get("protocol") %} protocol {{ v.protocol }}{%- endif %}
+    {%- if v.get("l3proto") %} l3proto {{ v.l3proto }}{%- endif %}
+}
+{%- endmacro %}
+
+{%- macro render_ct_timeout(k, v) -%}
+ct timeout {{ k }} {
+{%-   if v.get("protocol") %}
+  protocol {{ v.protocol }};
+{%-   endif %}
+{%-   if v.get("l3proto") %}
+  l3proto {{ v.l3proto }};
+{%-   endif %}
+  policy = { {%- for state, cnt in v.policy | dictsort %} {{ state }}: {{ cnt }}{{ "," if not loop.last else "" }}{%-   endfor %} }
+}
+{%- endmacro %}
+
+{%- macro render_ct_expectation(k, v) -%}
+ct expectation {{ k }} {
+
+{%-   if v.get("protocol") %}
+  protocol {{ v.protocol }}
+{%-   endif %}
+
+{%-   if v.get("l3proto") %}
+  l3proto {{ v.l3proto }}
+{%-   endif %}
+
+{%-   if v.get("dport") %}
+  dport {{ v.dport }}
+{%-   endif %}
+
+{%-   if v.get("timeout") %}
+  timeout {{ v.timeout }}
+{%-   endif %}
+
+{%-   if v.get("size") %}
+  size {{ v.size }}
+{%-   endif %}
+}
+{%- endmacro %}
+
+{%- macro render_secmark(k, v) -%}
+secmark {{ k }} {
+    "{{ v }}"
+}
+{%- endmacro %}
+
+{%- macro render_rules(rules) -%}
+{%-   if rules is not list %}
+{%-     set rules = [rules] %}
+{%-   endif %}
+{%-   set rules_rendered = [] %}
+{%-   for rule in rules %}
+{%-     if rule.startswith("__tpl:") %}
+{%-       set rule_tpl = nftables.lookup.templates[rule[6:]] %}
+{%-       if rule_tpl is not list %}
+{%-         set rule_tpl = [rule_tpl] %}
+{%-       endif %}
+{%-       do rules_rendered.extend(rule_tpl) %}
+{%-     else %}
+{%-       do rules_rendered.append(rule) %}
+{%-     endif %}
+{%-   endfor %}
+{{- rules_rendered | join("\n") }}
+{%- endmacro %}
+
+{#- Now the actual rendering -#}
+#!/usr/sbin/nft -f
+
+{%- if nftables.compat.flush %}
+
+flush ruleset
+
+{%- else %}
+
+# Only flush tables we're managing
+{%-   for tname, table in nftables.config.tables %}
+table {{ table.family }} {{ tname }}
+delete table {{ table.family }} {{ tname }}
+{%-   endfor %}
+{%- endif %}
+
+# Global variables
+{%- for k, v in nftables.config.vars | dictsort %}
+{{ render_define(k, v) }}
+{%- endfor %}
+
+{%- for tname, table in nftables.config.tables | dictsort %}
+
+table {{ table.family }} {{ tname }} {
+
+{%-   if table.get("vars") %}
+
+  ############################
+  # Variables table '{{ tname }}'
+  ############################
+{%-     for k, v in table.vars | dictsort %}
+  {{ render_define(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("sets") %}
+
+  ############################
+  # Sets table '{{ tname }}'
+  ############################
+{%-     for k, v in table.sets | dictsort %}
+  {{ render_set(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("maps") %}
+
+  ############################
+  # Maps table '{{ tname }}'
+  ############################
+{%-     for k, v in table.maps | dictsort %}
+  {{ render_map(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("counters") %}
+
+  ############################
+  # Counters table '{{ tname }}'
+  ############################
+{%-     for k, v in table.counters | dictsort %}
+  {{ render_counter(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("limits") %}
+
+  ############################
+  # Limits table '{{ tname }}'
+  ############################
+{%-     for k, v in table.limits | dictsort %}
+  {{ render_limit(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("quotas") %}
+
+  ############################
+  # Quotas table '{{ tname }}'
+  ############################
+{%-     for k, v in table.quotas | dictsort %}
+  {{ render_quota(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("ct_helpers") %}
+
+  ############################
+  # CT Helpers table '{{ tname }}'
+  ############################
+{%-     for k, v in table.ct_helpers | dictsort %}
+  {{ render_ct_helper(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("ct_timeouts") %}
+
+  ############################
+  # CT Timeouts table '{{ tname }}'
+  ############################
+{%-     for k, v in table.ct_timeouts | dictsort %}
+  {{ render_ct_timeout(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("ct_expectations") %}
+
+  ############################
+  # CT Expectations table '{{ tname }}'
+  ############################
+{%-     for k, v in table.ct_expectations | dictsort %}
+  {{ render_ct_expectation(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+{%-   if table.get("secmarks") %}
+
+  ############################
+  # Secmarks table '{{ tname }}'
+  ############################
+{%-     for k, v in table.secmarks | dictsort %}
+  {{ render_secmark(k, v) | indent(2) }}
+{%-     endfor %}
+
+{%-   endif %}
+
+  ############################
+  # Chains table '{{ tname }}'
+  ############################
+{%-   for cname, chain in table.chains | dictsort %}
+{%-     set is_main = not not chain.get("hook") %}
+
+  chain {{ cname }} {
+{%-     if is_main %}
+    type {{ chain.get("type", "filter") }} hook {{ chain.hook }} priority {{ chain.get("priority", 0) }}; policy {{ chain.get("policy", "accept") }}
+{%-     endif %}
+{%-     if chain.get("vars") %}
+
+    ############################
+    # Variables chain '{{ tname }}-{{ cname }}'
+    ############################
+{%-       for k, v in chain.vars | dictsort %}
+    {{ render_define(k, v) | indent(4) }}
+{%-       endfor %}
+{%-     endif %}
+
+    ############################
+    # Rules chain '{{ tname }}-{{ cname }}'
+    ############################
+{%-     for comment, rules in chain.rules | dictsort %}
+{%-       if rules %}
+    # {{ comment }}
+    {{ render_rules(rules) | indent(4) }}
+{%-       endif %}
+{%-     endfor %}
+  }
+
+{%-   endfor %}
+}
+{% endfor %}
+
+include "{{ nftables.lookup.config_d }}/*.nft"

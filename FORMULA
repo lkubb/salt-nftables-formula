@@ -1,0 +1,9 @@
+name: nftables
+os: Debian, Ubuntu, Raspbian, RedHat, Fedora, CentOS, Amazon, Oracle, Suse, openSUSE, Gentoo, Funtoo, Arch, Manjaro, Alpine
+os_family: Debian, RedHat, Suse, Gentoo, Arch, Alpine
+version: 1.0.0
+release: 1
+minimum_version: 2019.2
+summary: nftables formula
+description: Manage nftables with Salt
+top_level_dir: nftables

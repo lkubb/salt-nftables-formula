@@ -1,0 +1,13 @@
+[Service]
+ExecStartPre={{ nftables.lookup.nft_bin }} -cf {{ nftables.lookup.config }}
+
+ExecStart=
+ExecStart={{ nftables.lookup.nft_bin }} -f {{ nftables.lookup.config }}
+
+ExecReload=
+ExecReload={{ nftables.lookup.nft_bin }} -cf {{ nftables.lookup.config }}
+{%- if nftables.compat.reload_flush %}
+ExecReload={{ nftables.lookup.nft_bin }} 'flush ruleset; include "{{ nftables.lookup.config }}";'
+{%- else %}
+ExecReload={{ nftables.lookup.nft_bin }} -f {{ nftables.lookup.config }}
+{%- endif %}

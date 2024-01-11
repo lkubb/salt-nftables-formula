@@ -1,0 +1,276 @@
+# vim: ft=yaml
+# yamllint disable rule:comments-indentation
+---
+nftables:
+    # Compatibility settings
+  compat:
+      # Disable and stop the `filrewalld` service.
+    disable_firewalld: false
+      # Include a complete ruleset flush at the top of the config.
+      # This will also flush rules that were defined somewhere else,
+      # like fail2ban. Set this to false to only flush tables that
+      # are defined by this formula.
+    flush: true
+      # When called via systemctl reload, make the service
+      # flush the ruleset before loading the config file.
+    reload_flush: true
+
+    # This formula also syncs files via TOFS.
+  config_d:
+      # Enable this behavior.
+    enable: true
+      # Ensure the target directory only contains expected files.
+    clean: true
+      # Parameters for `file.recurse` `ignore_pat`. Files matching these
+      # patterns will be ignored from `clean` and when syncing from the fileserver.
+    ignore:
+      - osf
+      # This is a OS fingerprint file present in RedHat by default.
+      - osf/pf.os
+
+    # The main configuration this formula is mostly about.
+    # This is empty by default, but the following shows all possible
+    # configuration parameters.
+    # It will be rendered as the main nftables config file.
+  config:
+      # Key-value pairs of global variables.
+      # They can be referenced via $var_name.
+    vars:
+      foo: bar
+      bar:
+        - foo  # Lists will be rendered as anonymous sets.
+      baz:
+        - foo
+        - bar
+    tables:
+        # The name of the table.
+      my_table:
+          # The protocol family: inet (ip+ip6), ip, ip6, arp, bridge, netdev.
+          # Required.
+        family: inet
+
+          # Chains present in this table.
+          # https://wiki.nftables.org/wiki-nftables/index.php/Quick_reference-nftables_in_10_minutes#Chains
+          # https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains
+        chains:
+            # The name of the chain.
+          base_chain:
+              # If this is a base chain, specify which hook to attach to.
+              # Available hooks depend on the table's protocol family. All:
+              # ingress, prerouting, input, forward, output, postrouting
+              # https://wiki.nftables.org/wiki-nftables/index.php/Netfilter_hooks
+            hook: input
+              # If this is a base chain, which type it should be. Available types
+              # depend on the table's protocol family. All: filter, route, nat.
+              # Defaults to filter.
+            type: filter
+              # The chain's priority. Can be negative. Defaults to 0.
+            priority: 0
+              # Which action to take when there are no matches.
+              # All: allow, drop
+            policy: allow
+              # Key-value pairs of table-specific variables.
+            vars:
+              foo2: baz
+              # The actual rules found in this chain.
+              # This is a mapping of str -> [str | list[str]].
+              # The keys are used for sorting and will be rendered as a comment.
+              # Each key can contain multiple rules, e.g. if they are a logical group.
+              # https://wiki.nftables.org/wiki-nftables/index.php/Quick_reference-nftables_in_10_minutes
+            rules:
+              005 allow loopback: iif "lo" accept
+              # This rule group shows multiple rules. Note that it could be
+              # simplified to:
+              # ct state vmap { established : accept, related : accept, invalid : drop }
+              015 state management:
+                - ct state established,related accept
+                - ct state invalid drop
+              # You can also define reusable rule fragments in nftables:lookup:templates
+              010 allow igmp: __tpl:allow_igmp
+              # They can also be list elements.
+              015 allow mdns:
+                - __tpl:mdns_allow
+
+          # ------ Advanced structures ------
+
+          # Key-value pairs of table-specific variables.
+        vars:
+          foo3: quux
+
+          # Named sets for this table. They can be referenced as @set_name.
+          # https://wiki.nftables.org/wiki-nftables/index.php/Sets
+        sets:
+            # The set name.
+          foo_set:
+              # The type of the set values. Either this or `typeof` is required.
+              # All: ipv4_addr, ipv6_addr, ether_addr, inet_proto, inet_service,
+              #      mark, ifname
+            type: ipv4_addr
+              # The list of elements of this set. Values will be dumped as-is,
+              # so you can use advanced expressions (e.g. for timeout/counter params).
+            elements:
+              - 127.0.0.1
+              # How long an element stays in the set. Optional. Use d/h/m/s suffixes.
+            timeout: 3h45s
+              # A list of flags. Optional. All: constant, interval, timeout.
+              # `interval` is required to support subnets as elements.
+            flags:
+              - timeout
+              # With timeout or flag timeout: garbage collection interval. Optional.
+            gc_interval: 1h3m37s
+              # Limit this set's size. Optional.
+            size: 12
+              # Set selection policy. Optional. All: performance (default), memory.
+            policy: performance
+              # Enable counter per element. Optional. Defaults to false.
+              # Specify counter params per element above:
+              # - 1.1.1.1 counter packets 0 bytes 0
+            counter: true
+              # Automatically merge adjacent/overlapping set elements
+              # (when interval flag was set). Optional. Defaults to false.
+            auto_merge: true
+
+          bar_set:
+              # Alternative to `type`. Type will be inferred from expression.
+            typeof: osf name
+            elements:
+              - Some OS Fingerprint
+              - Some Other OS Fingerprint
+
+          # Named maps for this table. They can be referenced as @map_name.
+          # The parameters are the same as for sets, with the exception
+          # of `type`/`typeof`.
+          # https://wiki.nftables.org/wiki-nftables/index.php/Maps
+          # https://wiki.nftables.org/wiki-nftables/index.php/Verdict_Maps_(vmaps)
+        maps:
+            # The map name.
+          foo_map:
+              # The type of the map keys. Required.
+              # https://wiki.nftables.org/wiki-nftables/index.php/Data_types
+            type_key: ipv4_addr
+              # The type of the map values. Required.
+              # Setting this to `verdict` makes it a vmap.
+            type_value: verdict
+            elements:
+              127.0.0.1: accept
+
+          # Named counters for this table. They can be referenced in rules as
+          # [...] counter name foo_cnt
+          # https://wiki.nftables.org/wiki-nftables/index.php/Counters
+        counters:
+            # Nothing is required.
+          foo_cnt: {}
+            # You can initialize the counters.
+          bar_cnt:
+            bytes: 1337
+            packets: 42
+            comment: yolo
+
+          # Named limits for this table. They can be referenced in rules as
+          # [...] limit name "foo_lim" [accept]
+          # https://wiki.nftables.org/wiki-nftables/index.php/Limits
+        limits:
+          foo_lim:
+              # The limit rate. Required. This will use packets/minute as the unit.
+            rate: 400/minute
+          bar_lim:
+              # You can also use byte units. Note that since the numerator has
+              # a unit, a space is required.
+            rate: 400 mbytes/minute
+              # Burst rate.
+            burst: 512 mbytes
+              # Comments are allowed.
+            comment: wat
+
+            # Named quotas for this table. They can be referenced as
+            # [...] quota name "foo_quot" drop
+            # (accept does not make sense without `inv`).
+            # https://wiki.nftables.org/wiki-nftables/index.php/Quotas
+        quotas:
+          foo_quot:
+              # By default, this quota will trigger above `count`.
+              # Set this to true to trigger below instead.
+            inv: false
+              # The threshold.
+            count: 500 mbytes
+              # You can initialize the count.
+            used: 10 mbytes
+              # Comments are allowed.
+            comment: hehe
+
+          # Conntrack helpers for this table.
+          # https://wiki.nftables.org/wiki-nftables/index.php/Conntrack_helpers
+        ct_helpers:
+            # The name of the CT helper.
+          ftp-standard:
+              # The in-kernel name of the ct helper to use.
+            type: ftp
+              # The protocol.
+            protocol: tcp
+
+          # Conntrack timeout policies for this table.
+          # They can be referenced in rules as `[...] ct timeout set "agressive-tcp"`
+          # https://wiki.nftables.org/wiki-nftables/index.php/Ct_timeout
+        ct_timeouts:
+          agressive-tcp:
+            l3proto: ip
+            protocol: tcp
+            policy:
+              established: 100
+              close_wait: 4
+              close: 4
+
+          # Conntrack expectations for this table.
+          # They can be referenced in rules as `[...] expectation set "e_pgsql"`
+          # https://wiki.nftables.org/wiki-nftables/index.php/Ct_expectation
+        ct_expectations:
+          e_pgsql:
+            l3proto: ip
+            protocol: tcp
+            dport: "5432"
+            timeout: 1h
+            size: 12
+
+          # Secmarks for this table for use with SELinux and other security modules.
+          # https://wiki.nftables.org/wiki-nftables/index.php/Secmark
+        secmarks:
+          ssh_server: system_u:object_r:ssh_server_packet_t:s0
+
+  lookup:
+    config_d: /etc/nftables.d
+    firewalld:
+      service: firewalld
+    nft_bin: /usr/sbin/nft
+    service_override: /etc/systemd/system/{service}.service.d/salt.conf
+      # Rule templates that can be referenced using `__tpl:rule_name` syntax.
+    templates:
+      mdns_allow: ip daddr 224.0.0.251 udp dport mdns accept
+
+  tofs:
+      # The files_switch key serves as a selector for alternative
+      # directories under the formula files directory. See TOFS pattern
+      # doc for more info.
+      # Note: Any value not evaluated by `config.get` will be used literally.
+      # This can be used to set custom paths, as many levels deep as required.
+    files_switch:
+      - any/path/can/be/used/here
+      - id
+      - roles
+      - osfinger
+      - os
+      - os_family
+
+      # All aspects of path/file resolution are customisable using the options below.
+      # This is unnecessary in most cases; there are sensible defaults.
+      # Default path: salt://< path_prefix >/< dirs.files >/< dirs.default >
+      # I.e.: salt://nftables/files/default
+      # path_prefix: template_alt
+      # dirs:
+      #   files: files_alt
+      #   default: default_alt
+      # The entries under `source_files` are prepended to the default source files
+      # given for the state
+    source_files:
+      nftables configuration is managed:
+        - 'nftables_alt.conf'
+        - 'nftables_alt.conf.j2'
