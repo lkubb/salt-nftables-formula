@@ -32,5 +32,5 @@ nftables service overrides are installed:
 Firewalld is disabled:
   service.dead:
     - name: {{ nftables.lookup.firewalld.service }}
-    - disable: true
+    - enable: false
 {%- endif %}
