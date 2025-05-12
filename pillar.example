@@ -69,7 +69,7 @@ nftables:
               # Which action to take when there are no matches.
               # All: allow, drop
             policy: allow
-              # Key-value pairs of table-specific variables.
+              # Key-value pairs of chain-specific variables.
             vars:
               foo2: baz
               # The actual rules found in this chain.
