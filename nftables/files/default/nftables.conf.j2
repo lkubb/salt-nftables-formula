@@ -98,7 +98,7 @@ map {{ k }} {
 {%-   endif %}
 {%-   if v.get("elements") %}
   elements = {
-{%-     for key, val in v.get("elements", []) | dictsort %}
+{%-     for key, val in v.get("elements", {}) | dictsort %}
 {#-  `val` can either contain the element's value only or
      the value + options for counter/timeout `counter packets 0 bytes 0`
 #}
@@ -224,7 +224,7 @@ flush ruleset
 {%- else %}
 
 # Only flush tables we're managing
-{%-   for tname, table in nftables.config.tables %}
+{%-   for tname, table in nftables.config.tables | dictsort %}
 table {{ table.family }} {{ tname }}
 delete table {{ table.family }} {{ tname }}
 {%-   endfor %}
